@@ -69,7 +69,7 @@ def set_out(out):
     rotation_out = out
 
 
-pid = PID(P=0.6, I=0.0, D=0.03, current_time=None)
+pid = PID(P=1.0, I=0.0, D=0.03, current_time=None)
 
 
 def plot_values(img, x, y, val):
@@ -94,82 +94,84 @@ if RECORD:
     outf = open(rec_file, 'wb')
 
 
-start = time.time()
-iFrame = 0
-for frame in camera.capture_continuous(rawCapture, format='bgr', use_video_port=True):
-    
-    img = copy.copy(frame.array)
-    if RECORD:
-        cv2.imwrite(f'frame_{iFrame:03d}.bmp', img)
-        # outf.write(img.tobytes())
-        #  writer.write(img)
+if __name__ == '__main__':
+    start = time.time()
+    iFrame = 0
+    for frame in camera.capture_continuous(rawCapture, format='bgr', use_video_port=True):
+        
+        img = copy.copy(frame.array)
+        if RECORD:
+            cv2.imwrite(f'frame_{iFrame:03d}.bmp', img)
+            # outf.write(img.tobytes())
+            #  writer.write(img)
 
-    if FLIP_CAMERA:
-        img = cv2.rotate(img, cv2.ROTATE_180)
+        if FLIP_CAMERA:
+            img = cv2.rotate(img, cv2.ROTATE_180)
 
-    (x, y), val = detect_laser(img)
+        (x, y), val = detect_laser(img)
 
-    if val > LASER_INTENSITY_THRESH:
+        if val > LASER_INTENSITY_THRESH:
 
 
-        dx = 2 * float(x) / frame_size[0] - 1.0
+            dx = 2 * float(x) / frame_size[0] - 1.0
+            dy = 2 * float(y) / frame_size[1] - 1.0
 
-        pid.update(dx)
-        rotation_out = pid.output
-        print(f'dx={dx:.2f} out = {rotation_out:.2f}')
+            pid.update(dx)
+            rotation_out = pid.output
+            print(f'dy={dy:.2f} dx={dx:.2f} out = {rotation_out:.2f}')
 
-        s = min(abs(rotation_out), 1.0)
-        if rotation_out < 0:
-            # Turn right
-            green_led.on()
+            s = min(abs(rotation_out), 1.0)
+            if rotation_out < 0:
+                # Turn right
+                green_led.on()
+                red_led.off()
+                if MOTORS_ON:
+                    move_wheel('r', -1, s)
+                    move_wheel('l', 1, s)
+            else:
+                # Turn left
+                green_led.off()
+                red_led.on()
+                if MOTORS_ON:
+                    move_wheel('r', 1, s)
+                    move_wheel('l', -1, s)
+
+        else:
+            green_led.off()
             red_led.off()
             if MOTORS_ON:
-                move_wheel('r', -1, s)
-                move_wheel('l', 1, s)
-        else:
-            # Turn left
-            green_led.off()
-            red_led.on()
-            if MOTORS_ON:
-                move_wheel('r', 1, s)
-                move_wheel('l', -1, s)
+                move_wheel('r', 0, 0)
+                move_wheel('l', 0, 0)
 
-    else:
-        green_led.off()
-        red_led.off()
-        if MOTORS_ON:
-            move_wheel('r', 0, 0)
-            move_wheel('l', 0, 0)
+        if DISPLAY_FRAMES_FREQ > 0 and iFrame % DISPLAY_FRAMES_FREQ == 0:
+            plot_values(img, x, y, val)
+            cv2.imshow('Image', img)
+            key = cv2.waitKey(1) & 0xFF
 
-    if DISPLAY_FRAMES_FREQ > 0 and iFrame % DISPLAY_FRAMES_FREQ == 0:
-        plot_values(img, x, y, val)
-        cv2.imshow('Image', img)
-        key = cv2.waitKey(1) & 0xFF
+            # If the `q` key was pressed, break from the loop
+            if key == ord('q'):
+                break
 
-        # If the `q` key was pressed, break from the loop
-        if key == ord('q'):
+        # Clear the stream in preparation for the next frame
+        rawCapture.truncate(0)
+
+        iFrame += 1
+
+        now = time.time()
+        elapsed = now - start
+        # print(f'Elapsed [ms]: {elapsed*1000.0:.1f}')
+        start = now
+
+        W = 100
+        
+        xstr = [' '] * W
+        xstr[W//2] = '|'
+        xstr[ int(float(x) / frame_size[0] * W) ] = 'x'
+        sys.stdout.write('\r' + ''.join(xstr))
+        sys.stdout.flush()
+
+
+        if RECORD and iFrame >= 500:
             break
-
-    # Clear the stream in preparation for the next frame
-    rawCapture.truncate(0)
-
-    iFrame += 1
-
-    now = time.time()
-    elapsed = now - start
-    # print(f'Elapsed [ms]: {elapsed*1000.0:.1f}')
-    start = now
-
-    W = 100
-    
-    # xstr = [' '] * W
-    # xstr[W//2] = '|'
-    # xstr[ int(float(x) / frame_size[0] * W) ] = 'x'
-    # sys.stdout.write('\r' + ''.join(xstr))
-    # sys.stdout.flush()
-
-
-    if RECORD and iFrame >= 500:
-        break
 
 
